@@ -1,0 +1,1 @@
+./flink run -c cpm.practice.flink.App /home/sidharth/WorkSpace/FlinkStreaming/target/FlinkPractice-0.0.1-SNAPSHOT-jar-with-dependencies.jar
