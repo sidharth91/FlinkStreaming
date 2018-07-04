@@ -25,8 +25,6 @@ public class MqttFlinkSource extends RichSourceFunction<MqttMessage> implements 
 	public void open(Configuration parameters) throws Exception {
 		this.client = new MqttClient(broker, clientid);
 		 MqttConnectOptions connOpts = new MqttConnectOptions();
-		 connOpts.setUserName("sid");
-		 connOpts.setPassword("sidharth".toCharArray());
          connOpts.setCleanSession(true);
          this.client.connect(connOpts);
          this.client.subscribe(topic);

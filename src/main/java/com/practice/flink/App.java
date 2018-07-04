@@ -4,13 +4,16 @@ import java.util.Properties;
 
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
-import org.apache.flink.runtime.state.filesystem.FsStateBackend;
+import org.apache.flink.api.java.tuple.Tuple;
+import org.apache.flink.runtime.state.AbstractStateBackend;
+import org.apache.flink.runtime.state.StateBackend;
+import org.apache.flink.runtime.state.StateBackendFactory;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
-import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer011;
@@ -21,9 +24,12 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.practice.flink.filter.AvgMapFunction;
 import com.practice.flink.filter.Converters;
+import com.practice.flink.filter.MinMapFunction;
+import com.practice.flink.filter.MaxMapFunction;
 import com.practice.flink.filter.TimeStampAssigner;
 import com.practice.flink.model.ReceivedData;
 import com.practice.flink.model.SensorData;
+import com.practice.flink.sink.RedisAggregateFlinkSink;
 import com.practice.flink.source.MqttFlinkSource;
 
 
@@ -37,23 +43,21 @@ public class App
     public static void main( String[] args ) throws Exception
     {
        //final StreamExecutionEnvironment environment=StreamExecutionEnvironment.createLocalEnvironment();
-       final StreamExecutionEnvironment environment = StreamExecutionEnvironment.getExecutionEnvironment();
+        final StreamExecutionEnvironment environment = StreamExecutionEnvironment.getExecutionEnvironment();
         
-        environment.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
-        environment.setStateBackend(new MemoryStateBackend());
-        CheckpointConfig config = environment.getCheckpointConfig();
-        environment.enableCheckpointing(1000);
+		environment.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+		environment.setStateBackend((StateBackend) new MemoryStateBackend());
+		environment.enableCheckpointing(1000);
         
         
-        Properties properties = new Properties();
+/*        Properties properties = new Properties();
         properties.setProperty("bootstrap.servers", "localhost:9092");
         properties.setProperty("group.id", "test");
-       // FlinkKafkaConsumer011<String> consumer=new FlinkKafkaConsumer011<String>("flink-test", new SimpleStringSchema(),properties);
+        FlinkKafkaConsumer011<String> consumer=new FlinkKafkaConsumer011<String>("flink-test", new SimpleStringSchema(),properties);
+        DataStream<String> kafkastream = environment.addSource(consumer);//kafka stream added
+*/        
         MqttFlinkSource mqttconsumer=new MqttFlinkSource("tcp://localhost:1883","flink-client","/flink");
-        
         DataStream<MqttMessage> mqttStream = environment.addSource(mqttconsumer);//mqtt siurce added 
-        //DataStream<String> kafkastream = environment.addSource(consumer);//kafka stream added
-   
         final OutputTag<String> errorTag = new OutputTag<String>("Error"){}; //create a error side stream to have error data in this
        
         /*
@@ -103,7 +107,10 @@ public class App
         DataStream<String> errorstream=mainDataStream.getSideOutput(errorTag);//get the side datastream from mainstream
         
         errorstream.print();
-        sensorDataStream.keyBy("key").map(new AvgMapFunction()).print();
+        KeyedStream<SensorData, Tuple> keyedStream=sensorDataStream.keyBy("key");
+        keyedStream.map(new AvgMapFunction()).addSink(new RedisAggregateFlinkSink("localhost",6379));
+        keyedStream.map(new MinMapFunction()).addSink(new RedisAggregateFlinkSink("localhost",6379));
+        keyedStream.map(new MaxMapFunction()).addSink(new RedisAggregateFlinkSink("localhost",6379));
 		environment.execute();
     }
 }
